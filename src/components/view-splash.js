@@ -167,7 +167,7 @@ class ViewSplash extends HTMLElement {
         <!-- Main Content -->
         <div class="content-wrapper">
 
-          <h1 class="mystic-title">Immersive Language Learning</h1>
+          <h1 class="mystic-title">Synapta</h1>
 
           <p style="
             font-family: 'Playfair Display', serif;
@@ -179,7 +179,7 @@ class ViewSplash extends HTMLElement {
             text-align: center;
             max-width: 600px;
           ">
-            Intense immersive language learning experience.
+            Um sistema de mobilidade de liderança via linguagem.
           </p>
 
           <div style="margin-top: var(--spacing-lg);">

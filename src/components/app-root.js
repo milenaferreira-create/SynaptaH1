@@ -235,14 +235,6 @@ class AppRoot extends HTMLElement {
             gap: 8px;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
         `;
-
-        const missingText = missing.join(' & ');
-        warning.innerHTML = `
-            <span>⚠️ <b>Simple Mode Check:</b> Production security features (${missingText}) are not configured.</span>
-            <a href="https://github.com/ZackAkil/immersive-language-learning-with-live-api#advanced-configuration" target="_blank" style="color: #533f03; text-decoration: underline; font-weight: bold; margin-left: 4px;">Learn more</a>
-        `;
-
-        this.appendChild(warning);
     }
 
     render() {
