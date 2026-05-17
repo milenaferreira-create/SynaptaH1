@@ -2,42 +2,44 @@
   /* Box sizing reset */
   box-sizing: border-box;
 }
-
+ 
 *,
 *::before,
 *::after {
   box-sizing: inherit;
 }
-
+ 
 :root {
-  /* Colors - Mystic Archive (Dark Default) */
-    --color-bg: #0a0b10;
-    /* Deep Blue-Black */
-    --color-surface: rgba(22, 24, 34, 0.6);
-    /* Glassy Surface */
-    --color-surface-solid: #161822;
-    /* Fallback */
-    --color-text-main: #eaddcf;
-    /* Warm Paper White */
-    --color-text-sub: #949ba4;
-    /* Cool Gray */
-  
-    /* Accents */
-    --color-accent-primary: #a3b18a;
-    /* Golden Sage */
-    --color-accent-secondary: #d4a373;
-    /* Leather/Gold */
-    --color-accent-glow: rgba(163, 177, 138, 0.15);
-  
-    /* Functional */
-    --color-danger: #e57373;
-    --color-success: #81c784;
-    --texture-opacity: 0.03;
-
+  /* Colors - House of Hypatia (Midnight Default) */
+  --color-bg: #0d1f3c;
+  /* Midnight Navy - autoridade, dados */
+  --color-surface: rgba(20, 38, 70, 0.55);
+  /* Navy Glassy Surface */
+  --color-surface-solid: #142646;
+  /* Navy fallback */
+  --color-text-main: #f2ede3;
+  /* Ivory - sofisticação, clareza */
+  --color-text-sub: rgba(242, 237, 227, 0.65);
+  /* Ivory atenuado */
+ 
+  /* Accents */
+  --color-accent-primary: #b06a28;
+  /* Copper - destaques, CTAs */
+  --color-accent-secondary: #c8843e;
+  /* Copper Light - variação sobre navy */
+  --color-accent-tertiary: #1e6b5e;
+  /* Electric Teal - IA, dados, sinapses */
+  --color-accent-glow: rgba(176, 106, 40, 0.18);
+ 
+  /* Functional */
+  --color-danger: #c75450;
+  --color-success: #1e6b5e;
+ 
   /* Typography */
-  --font-heading: 'Libre Baskerville', serif;
-  --font-body: 'Nunito', sans-serif;
-
+  --font-heading: 'Cormorant Garamond', serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+ 
   /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
@@ -45,89 +47,57 @@
   --spacing-lg: 24px;
   --spacing-xl: 32px;
   --spacing-xxl: 64px;
-
+ 
   /* Border Radius */
-  --radius-sm: 8px;
-  --radius-md: 16px;
-    /* Slightly rounder */
-    --radius-lg: 24px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
   --radius-full: 9999px;
-
+ 
   /* Effects */
-    --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 10px 30px -5px rgba(0, 0, 0, 0.4);
-    --shadow-glow: 0 0 20px var(--color-accent-glow);
-    --glass-border: 1px solid rgba(255, 255, 255, 0.08);
-    --backdrop-blur: blur(12px);
-  }
-  
-  /* Light Mode Override - Fresh Parchment */
-  .light-mode {
-    --color-bg: #f5f2eb;
-    /* Creamy Parchment */
-    --color-surface: rgba(255, 255, 255, 0.85);
-    /* More opaque */
-    --color-surface-solid: #ffffff;
-    --color-text-main: #2c2420;
-    /* Dark Ink */
-    --color-text-sub: #5e5048;
-    /* Sepia Gray */
-  
-    --color-accent-primary: #5c6b48;
-    /* Deep Olive */
-    --color-accent-secondary: #000000;
-    /* Distinct Black for strong headers/actions */
-    /* Aged Wood */
-    --color-accent-glow: rgba(92, 107, 72, 0.2);
-  
-    --texture-opacity: 0.15;
-    --glass-border: 1px solid rgba(0, 0, 0, 0.08);
-    /* Stronger border */
-    --shadow-sm: 0 4px 6px -1px rgba(44, 36, 32, 0.1);
-    --shadow-md: 0 10px 30px -5px rgba(44, 36, 32, 0.12);
+  --shadow-sm: 0 4px 12px -2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 12px 32px -6px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 28px var(--color-accent-glow);
+  --glass-border: 1px solid rgba(242, 237, 227, 0.1);
+  --backdrop-blur: blur(14px);
 }
-
-/* Paper Texture */
+ 
+/* Light Mode Override - Ivory */
+.light-mode {
+  --color-bg: #f2ede3;
+  /* Ivory - papel de pergaminho */
+  --color-surface: rgba(255, 252, 246, 0.85);
+  --color-surface-solid: #fffcf6;
+  --color-text-main: #0d1f3c;
+  /* Midnight Navy como tinta */
+  --color-text-sub: rgba(13, 31, 60, 0.7);
+ 
+  --color-accent-primary: #b06a28;
+  /* Copper mantém */
+  --color-accent-secondary: #8a5220;
+  /* Copper escurecido para contraste sobre ivory */
+  --color-accent-tertiary: #1e6b5e;
+  --color-accent-glow: rgba(176, 106, 40, 0.2);
+ 
+  --glass-border: 1px solid rgba(13, 31, 60, 0.1);
+  --shadow-sm: 0 4px 12px -2px rgba(13, 31, 60, 0.1);
+  --shadow-md: 0 12px 32px -6px rgba(13, 31, 60, 0.12);
+}
+ 
 body {
   background-color: var(--color-bg);
-  /* Realistic Paper Texture: Turbulence + Diffuse Lighting */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400' opacity='1'%3E%3Cfilter id='paper' x='0%25' y='0%25' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' result='noise'/%3E%3CfeDiffuseLighting in='noise' lighting-color='white' surfaceScale='2'%3E%3CfeDistantLight azimuth='45' elevation='60'/%3E%3C/feDiffuseLighting%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23paper)'/%3E%3C/svg%3E");
-  background-blend-mode: multiply;
   color: var(--color-text-main);
   font-family: var(--font-body);
+  font-weight: 400;
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
   overflow-x: hidden;
   position: relative;
-  }
-  
-  /* Texture Overlay to handle opacity via CSS var */
-  body::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    background-image: inherit;
-    opacity: var(--texture-opacity);
-    z-index: -1;
-  }
-  
-  /* IMPORTANT: We need to remove background-image from body itself if we use the pseudo-element method for opacity, 
-           OR we can just update the SVG opacity in the URL if we wanted dynamic URL (harder in pure CSS). 
-           Actually, simplified approach: Let's apply the opacity to the blend mode or use an overlay.
-           Better: Use a pseudo-element for the texture entirely so we can control opacity.
-        */
-  body {
-    background-image: none;
-    /* Remove direct image */
-    background-color: var(--color-bg);
+  letter-spacing: 0.01em;
 }
-
+ 
 h1,
 h2,
 h3,
@@ -135,35 +105,86 @@ h4,
 h5,
 h6 {
   font-family: var(--font-heading);
-  font-weight: 700;
+  font-weight: 400;
   margin: 0 0 var(--spacing-md) 0;
   color: var(--color-text-main);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
 }
-
+ 
+h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 300;
+}
+ 
+h2 {
+  font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+  font-weight: 300;
+}
+ 
+h3 {
+  font-size: clamp(1.15rem, 2.5vw, 1.5rem);
+  font-weight: 400;
+}
+ 
+/* Italic in headings carries the brand's editorial elegance */
+h1 em,
+h2 em,
+h3 em {
+  font-style: italic;
+  color: var(--color-accent-secondary);
+  font-weight: 300;
+}
+ 
 p {
-  line-height: 1.6;
+  line-height: 1.65;
   margin-bottom: var(--spacing-md);
   color: var(--color-text-sub);
+  font-weight: 400;
 }
-
+ 
+/* Labels, tags, technical metadata - the data voice */
+.label,
+.tag,
+.meta,
+.mono {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent-secondary);
+  font-weight: 400;
+}
+ 
 button {
   cursor: pointer;
   border: none;
   font-family: var(--font-body);
-  transition: all 0.2s ease;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-sm) var(--spacing-lg);
+  background: var(--color-accent-primary);
+  color: var(--color-text-main);
 }
-
+ 
+button:hover {
+  background: var(--color-accent-secondary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-glow);
+}
+ 
 /* Utilities */
 .container {
-  max-width: 520px;
-    /* Slightly wider for elegance */
+  max-width: 560px;
   margin: 0 auto;
   padding: var(--spacing-lg);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
-
+ 
 .glass-panel {
   background: var(--color-surface);
   backdrop-filter: var(--backdrop-blur);
@@ -172,62 +193,65 @@ button {
   box-shadow: var(--shadow-sm);
   border-radius: var(--radius-lg);
 }
+ 
 .text-center {
   text-align: center;
 }
-
+ 
 .flex-center {
   display: flex;
   align-items: center;
   justify-content: center;
 }
-
+ 
 .hidden {
   display: none !important;
 }
-
-/* Component Specific */
-/* Component Specific */
+ 
+/* Mission Grid */
 .mission-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--spacing-lg);
   margin-bottom: var(--spacing-xl);
 }
+ 
+/* Card */
 .card {
   background: var(--color-surface);
   backdrop-filter: var(--backdrop-blur);
-    -webkit-backdrop-filter: var(--backdrop-blur);
-    border: var(--glass-border);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-lg);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border: var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
   box-shadow: var(--shadow-sm);
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-  }
-  
-  .card:hover {
-    transform: translateY(-5px) scale(1.02);
-    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3), var(--shadow-glow);
-    border-color: var(--color-accent-primary);
-    z-index: 10;
+  transition: all 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
-
+ 
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md), var(--shadow-glow);
+  border-color: rgba(176, 106, 40, 0.4);
+  z-index: 10;
+}
+ 
 /* Animations */
 @keyframes fadeIn {
   from {
     opacity: 0;
     transform: translateY(10px);
   }
-
+ 
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
-
+ 
 .fade-in {
   animation: fadeIn 0.7s ease-out forwards;
 }
+ 
