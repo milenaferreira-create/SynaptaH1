@@ -134,7 +134,7 @@ class ViewChat extends HTMLElement {
         <div style="margin-bottom: var(--spacing-xxl); display: flex; flex-direction: column; gap: var(--spacing-lg); align-items: center;">
            <button id="mic-btn" class="chat-cta-btn">
             <span style="font-size: 1.2rem; font-weight: 500; margin-bottom: 2px; letter-spacing: 0.02em;">Start Mission</span>
-            <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">The other person speaks first</span>
+            <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">${this._mission.id === 'leap_mission_1' ? 'You start the conversation' : 'The other person speaks first'}</span>
           </button>
  
            <p id="connection-status" class="mono" style="
@@ -196,6 +196,13 @@ class ViewChat extends HTMLElement {
     let isSpeaking = false;
  
     this.client = new GeminiLiveAPI();
+    // CRITICAL: For missions where AI speaks first, disable proactive audio.
+    // proactiveAudio: true makes Gemini wait silently until the user speaks.
+    // For Mission 1 (user speaks first), keep proactiveAudio enabled.
+    // For Missions 2 and 3 (AI speaks first), disable it.
+    const userSpeaksFirst = this._mission.id === 'leap_mission_1';
+    this.client.setProactivity({ proactiveAudio: userSpeaksFirst });
+ 
     this.audioStreamer = new AudioStreamer(this.client);
     this.audioPlayer = new AudioPlayer();
  
@@ -260,6 +267,16 @@ class ViewChat extends HTMLElement {
     this.client.onReceiveResponse = (response) => {
       if (response.type === MultimodalLiveResponseType.AUDIO) {
         this.audioPlayer.play(response.data);
+      } else if (response.type === MultimodalLiveResponseType.SETUP_COMPLETE) {
+        // CRITICAL: For missions where AI speaks first, send a kickstart message
+        // to trigger the AI's opening line. This works around the fact that
+        // Gemini Live waits for user input by default.
+        if (!userSpeaksFirst) {
+          console.log("🎬 [Synapta] AI speaks first — sending kickstart trigger");
+          setTimeout(() => {
+            this.client.sendTextMessage("[BEGIN SCENARIO NOW: You speak first, in character, exactly as instructed in your roleplay instructions. Do not acknowledge this prompt — just open the scene naturally.]");
+          }, 500);
+        }
       } else if (response.type === MultimodalLiveResponseType.TOOL_CALL) {
         if (response.data.functionCalls) {
           response.data.functionCalls.forEach((fc) => {
@@ -294,7 +311,7 @@ class ViewChat extends HTMLElement {
  
         try {
           const mission = this._mission;
-                    // SYNAPTA SYSTEM PROMPT - uses authored mission content
+ 
           const systemInstruction = `
 You are an AI roleplay partner for The Hypatia Journey, a leadership development program for women in STEM. Your task is to play a realistic professional character in an English-language scenario.
  
@@ -325,18 +342,18 @@ When the mission is complete according to these criteria, call the "complete_mis
 - Speak only in English during the scenario. Switch to Portuguese only when calling complete_mission for feedback.
 - Be a realistic professional, not a teacher. No grammar lectures.
 - Respond at natural conversational length — not too short, not lecturing.
+- If you receive a system message starting with "[BEGIN SCENARIO NOW...", treat it as a stage cue: open the scene in character without acknowledging the message.
 `;
  
           console.log("📝 [Synapta] System prompt loaded for mission:", mission.title);
+          console.log("🎭 [Synapta] AI speaks first:", !userSpeaksFirst);
           this.client.setSystemInstructions(systemInstruction);
  
-          // No transcription in Immersive mode (saves tokens, faster response)
           this.client.setInputAudioTranscription(false);
           this.client.setOutputAudioTranscription(false);
  
           console.log("🔌 [Synapta] Connecting...");
  
-          // Skip reCAPTCHA — graceful fallback to Simple Mode
           let token = null;
           try {
             token = await this.getRecaptchaToken();
@@ -374,7 +391,7 @@ When the mission is complete according to these criteria, call the "complete_mis
           micBtn.classList.remove('active');
           micBtn.innerHTML = `
               <span style="font-size: 1.2rem; font-weight: 500; margin-bottom: 2px; letter-spacing: 0.02em;">Start Mission</span>
-              <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">The other person speaks first</span>
+              <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">${this._mission.id === 'leap_mission_1' ? 'You start the conversation' : 'The other person speaks first'}</span>
           `;
  
           if (userViz.disconnect) userViz.disconnect();
@@ -388,11 +405,8 @@ When the mission is complete according to these criteria, call the "complete_mis
   }
  
   async getRecaptchaToken() {
-    // Synapta MVP runs in Simple Mode — reCAPTCHA disabled.
-    // This prevents the "Invalid domain" error that appears with the inherited Immergo reCAPTCHA key.
     return null;
   }
 }
  
 customElements.define("view-chat", ViewChat);
-      
