@@ -16,10 +16,12 @@ class ViewChat extends HTMLElement {
   constructor() {
     super();
     this._mission = null;
+    this._rendered = false;
   }
  
   set mission(value) {
     this._mission = value;
+    if (this._rendered) return; // Prevent re-render if already rendered
     this.render();
   }
  
@@ -36,16 +38,35 @@ class ViewChat extends HTMLElement {
   }
  
   connectedCallback() {
-    this.render();
+    if (this._mission && !this._rendered) {
+      this.render();
+    }
   }
  
   disconnectedCallback() {
-    if (this.audioStreamer) this.audioStreamer.stop();
-    if (this.client) this.client.disconnect();
+    try {
+      if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') {
+        this.audioStreamer.stop();
+      }
+    } catch (e) {
+      console.warn("Cleanup: audioStreamer stop failed:", e);
+    }
+    try {
+      if (this.client && typeof this.client.disconnect === 'function') {
+        this.client.disconnect();
+      }
+    } catch (e) {
+      console.warn("Cleanup: client disconnect failed:", e);
+    }
   }
  
   render() {
     if (!this._mission) return;
+    if (this._rendered) return;
+    this._rendered = true;
+ 
+    const mission = this._mission;
+    const userSpeaksFirst = mission.id === 'leap_mission_1';
  
     this.innerHTML = `
  
@@ -72,7 +93,7 @@ class ViewChat extends HTMLElement {
  
         <div style="margin-top: var(--spacing-xl); text-align: center;">
           <p class="mono" style="margin-bottom: var(--spacing-sm);">Roleplay scenario</p>
-          <h2 style="font-size: 1.6rem; margin-bottom: var(--spacing-sm); font-weight: 400;">${this._mission.target_role || "Target Person"}</h2>
+          <h2 style="font-size: 1.6rem; margin-bottom: var(--spacing-sm); font-weight: 400;">${mission.target_role || "Target Person"}</h2>
  
           <div style="
             border-radius: var(--radius-lg);
@@ -81,8 +102,8 @@ class ViewChat extends HTMLElement {
             margin-top: var(--spacing-md);
             max-width: 800px;
           ">
-            <p style="font-size: 1.15rem; font-weight: 400; color: var(--color-accent-secondary); margin: 0; font-family: var(--font-heading); font-style: italic;">${this._mission.title}</p>
-            <p style="font-size: 0.95rem; opacity: 0.75; margin-top: var(--spacing-sm); line-height: 1.55;">${this._mission.desc}</p>
+            <p style="font-size: 1.15rem; font-weight: 400; color: var(--color-accent-secondary); margin: 0; font-family: var(--font-heading); font-style: italic;">${mission.title}</p>
+            <p style="font-size: 0.95rem; opacity: 0.75; margin-top: var(--spacing-sm); line-height: 1.55;">${mission.desc}</p>
           </div>
         </div>
  
@@ -134,7 +155,7 @@ class ViewChat extends HTMLElement {
         <div style="margin-bottom: var(--spacing-xxl); display: flex; flex-direction: column; gap: var(--spacing-lg); align-items: center;">
            <button id="mic-btn" class="chat-cta-btn">
             <span style="font-size: 1.2rem; font-weight: 500; margin-bottom: 2px; letter-spacing: 0.02em;">Start Mission</span>
-            <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">${this._mission.id === 'leap_mission_1' ? 'You start the conversation' : 'The other person speaks first'}</span>
+            <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">${userSpeaksFirst ? 'You start the conversation' : 'The other person speaks first'}</span>
           </button>
  
            <p id="connection-status" class="mono" style="
@@ -149,9 +170,9 @@ class ViewChat extends HTMLElement {
     `;
  
     const doEndSession = () => {
-      if (this.audioStreamer) this.audioStreamer.stop();
-      if (this.client) this.client.disconnect();
-      if (this.audioPlayer) this.audioPlayer.interrupt();
+      try { if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') this.audioStreamer.stop(); } catch(e) {}
+      try { if (this.client && typeof this.client.disconnect === 'function') this.client.disconnect(); } catch(e) {}
+      try { if (this.audioPlayer && typeof this.audioPlayer.interrupt === 'function') this.audioPlayer.interrupt(); } catch(e) {}
  
       const userViz = this.querySelector("#user-viz");
       const modelViz = this.querySelector("#model-viz");
@@ -172,9 +193,9 @@ class ViewChat extends HTMLElement {
  
     const backBtn = this.querySelector("#back-to-missions");
     backBtn.addEventListener("click", () => {
-      if (this.audioStreamer) this.audioStreamer.stop();
-      if (this.client) this.client.disconnect();
-      if (this.audioPlayer) this.audioPlayer.interrupt();
+      try { if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') this.audioStreamer.stop(); } catch(e) {}
+      try { if (this.client && typeof this.client.disconnect === 'function') this.client.disconnect(); } catch(e) {}
+      try { if (this.audioPlayer && typeof this.audioPlayer.interrupt === 'function') this.audioPlayer.interrupt(); } catch(e) {}
  
       const userViz = this.querySelector("#user-viz");
       const modelViz = this.querySelector("#model-viz");
@@ -194,100 +215,7 @@ class ViewChat extends HTMLElement {
     const micBtn = this.querySelector("#mic-btn");
     const statusEl = this.querySelector("#connection-status");
     let isSpeaking = false;
- 
-    this.client = new GeminiLiveAPI();
-    // CRITICAL: For missions where AI speaks first, disable proactive audio.
-    // proactiveAudio: true makes Gemini wait silently until the user speaks.
-    // For Mission 1 (user speaks first), keep proactiveAudio enabled.
-    // For Missions 2 and 3 (AI speaks first), disable it.
-    const userSpeaksFirst = this._mission.id === 'leap_mission_1';
-    this.client.setProactivity({ proactiveAudio: userSpeaksFirst });
- 
-    this.audioStreamer = new AudioStreamer(this.client);
-    this.audioPlayer = new AudioPlayer();
- 
-    const completeMissionTool = new FunctionCallDefinition(
-      "complete_mission",
-      "Call this tool when the user has successfully completed the mission objective. Provide a score and feedback.",
-      {
-        type: "OBJECT",
-        properties: {
-          score: {
-            type: "INTEGER",
-            description:
-              "Rating from 1 to 3 based on performance on Clarity, Authority, and Fluency: 1 = Struggled with hedging, lack of authority, or frequent reliance on Portuguese. 2 = Capable, clear but with some hesitation or imperfect authority. 3 = Excellent, authoritative, fluent, native-like.",
-          },
-          feedback_pointers: {
-            type: "ARRAY",
-            items: { type: "STRING" },
-            description:
-              "List of 3 specific feedback points in Portuguese, addressing Clarity, Authority, and Fluency. Reference exact phrases the user said when relevant.",
-          },
-        },
-        required: ["score", "feedback_pointers"],
-      },
-      ["score", "feedback_pointers"]
-    );
- 
-    completeMissionTool.functionToCall = (args) => {
-      console.log("🏆 [Synapta] Mission Complete!", args);
- 
-      const winnerSound = new Audio("/winner-bell.mp3");
-      winnerSound.volume = 0.6;
-      winnerSound.play().catch((e) => console.error("Failed to play winner sound:", e));
- 
-      const levels = { 1: "Emergent", 2: "Capable", 3: "Authoritative" };
-      const level = levels[args.score] || "Capable";
- 
-      setTimeout(() => {
-        if (this.audioStreamer) this.audioStreamer.stop();
-        if (this.client) this.client.disconnect();
-        if (this.audioPlayer) this.audioPlayer.interrupt();
- 
-        const result = {
-          score: args.score.toString(),
-          level: level,
-          notes: args.feedback_pointers,
-        };
- 
-        this.dispatchEvent(
-          new CustomEvent("navigate", {
-            bubbles: true,
-            detail: { view: "summary", result: result },
-          })
-        );
-      }, 2500);
-    };
- 
-    this.client.addFunction(completeMissionTool);
- 
-    this.client.onConnectionStarted = () => console.log("🚀 [Synapta] Connection started");
-    this.client.onOpen = () => console.log("🔓 [Synapta] WebSocket open");
- 
-    this.client.onReceiveResponse = (response) => {
-      if (response.type === MultimodalLiveResponseType.AUDIO) {
-        this.audioPlayer.play(response.data);
-      } else if (response.type === MultimodalLiveResponseType.SETUP_COMPLETE) {
-        // CRITICAL: For missions where AI speaks first, send a kickstart message
-        // to trigger the AI's opening line. This works around the fact that
-        // Gemini Live waits for user input by default.
-        if (!userSpeaksFirst) {
-          console.log("🎬 [Synapta] AI speaks first — sending kickstart trigger");
-          setTimeout(() => {
-            this.client.sendTextMessage("[BEGIN SCENARIO NOW: You speak first, in character, exactly as instructed in your roleplay instructions. Do not acknowledge this prompt — just open the scene naturally.]");
-          }, 500);
-        }
-      } else if (response.type === MultimodalLiveResponseType.TOOL_CALL) {
-        if (response.data.functionCalls) {
-          response.data.functionCalls.forEach((fc) => {
-            this.client.callFunction(fc.name, fc.args);
-          });
-        }
-      }
-    };
- 
-    this.client.onError = (error) => console.error("❌ [Synapta] Error:", error);
-    this.client.onClose = () => console.log("🔒 [Synapta] Connection closed");
+    let kickstartSent = false;
  
     micBtn.addEventListener("click", async () => {
       isSpeaking = !isSpeaking;
@@ -306,12 +234,81 @@ class ViewChat extends HTMLElement {
  
       if (isSpeaking) {
         console.log("🎙️ [Synapta] Starting session...");
+        console.log("🎭 [Synapta] Mission:", mission.title, "| AI speaks first:", !userSpeaksFirst);
         statusEl.textContent = "Connecting...";
         statusEl.style.color = "var(--color-text-sub)";
+        kickstartSent = false;
  
         try {
-          const mission = this._mission;
+          // Create fresh client INSIDE the click handler — guarantees single instance per session
+          this.client = new GeminiLiveAPI();
+          this.client.setProactivity({ proactiveAudio: userSpeaksFirst });
  
+          this.audioStreamer = new AudioStreamer(this.client);
+          this.audioPlayer = new AudioPlayer();
+ 
+          // Configure tool
+          const completeMissionTool = new FunctionCallDefinition(
+            "complete_mission",
+            "Call this tool when the user has successfully completed the mission objective.",
+            {
+              type: "OBJECT",
+              properties: {
+                score: {
+                  type: "INTEGER",
+                  description: "Rating 1-3: 1=Emergent (struggled), 2=Capable (solid with hesitation), 3=Authoritative (native-level)",
+                },
+                feedback_pointers: {
+                  type: "ARRAY",
+                  items: { type: "STRING" },
+                  description: "3 specific feedback points in Portuguese addressing Clarity, Authority, Fluency",
+                },
+              },
+              required: ["score", "feedback_pointers"],
+            },
+            ["score", "feedback_pointers"]
+          );
+ 
+          completeMissionTool.functionToCall = (args) => {
+            console.log("🏆 [Synapta] Mission Complete!", args);
+            const winnerSound = new Audio("/winner-bell.mp3");
+            winnerSound.volume = 0.6;
+            winnerSound.play().catch(e => console.error(e));
+ 
+            const levels = { 1: "Emergent", 2: "Capable", 3: "Authoritative" };
+            const level = levels[args.score] || "Capable";
+            setTimeout(() => {
+              try { if (this.audioStreamer && this.audioStreamer.stop) this.audioStreamer.stop(); } catch(e) {}
+              try { if (this.client && this.client.disconnect) this.client.disconnect(); } catch(e) {}
+              try { if (this.audioPlayer && this.audioPlayer.interrupt) this.audioPlayer.interrupt(); } catch(e) {}
+ 
+              this.dispatchEvent(new CustomEvent("navigate", {
+                bubbles: true,
+                detail: { view: "summary", result: { score: args.score.toString(), level: level, notes: args.feedback_pointers } },
+              }));
+            }, 2500);
+          };
+ 
+          this.client.addFunction(completeMissionTool);
+ 
+          this.client.onConnectionStarted = () => console.log("🚀 [Synapta] Connection started");
+          this.client.onOpen = () => console.log("🔓 [Synapta] WebSocket open");
+          this.client.onError = (e) => console.error("❌ [Synapta] Error:", e);
+          this.client.onClose = () => console.log("🔒 [Synapta] Connection closed");
+ 
+          this.client.onReceiveResponse = (response) => {
+            if (response.type === MultimodalLiveResponseType.AUDIO) {
+              this.audioPlayer.play(response.data);
+            } else if (response.type === MultimodalLiveResponseType.TOOL_CALL) {
+              if (response.data.functionCalls) {
+                response.data.functionCalls.forEach((fc) => {
+                  this.client.callFunction(fc.name, fc.args);
+                });
+              }
+            }
+          };
+ 
+          // System instruction
           const systemInstruction = `
 You are an AI roleplay partner for The Hypatia Journey, a leadership development program for women in STEM. Your task is to play a realistic professional character in an English-language scenario.
  
@@ -333,37 +330,33 @@ ${mission.interaction_guidelines}
 ${mission.mission_completion}
  
 When the mission is complete according to these criteria, call the "complete_mission" tool with:
-- score: 1 (Emergent — struggled with authority, clarity, or fluency), 2 (Capable — solid but with some hesitation), or 3 (Authoritative — native-level command of the situation)
-- feedback_pointers: 3 specific, actionable points in Portuguese addressing Clarity, Authority, and Fluency. When useful, quote exact phrases the user said and offer alternatives.
+- score: 1 (Emergent), 2 (Capable), or 3 (Authoritative)
+- feedback_pointers: 3 specific points in Portuguese addressing Clarity, Authority, Fluency. Quote exact phrases when useful.
  
 ═══ CRITICAL RULES ═══
 - Stay in character as ${mission.ai_persona_name}. Do not break the fourth wall.
-- Do not act as an AI assistant. Do not say "as an AI" or similar.
-- Speak only in English during the scenario. Switch to Portuguese only when calling complete_mission for feedback.
+- Do not act as an AI assistant.
+- Speak only in English during the scenario.
 - Be a realistic professional, not a teacher. No grammar lectures.
-- Respond at natural conversational length — not too short, not lecturing.
-- If you receive a system message starting with "[BEGIN SCENARIO NOW...", treat it as a stage cue: open the scene in character without acknowledging the message.
+- ${userSpeaksFirst ? 'WAIT for the user to speak first.' : 'YOU MUST OPEN THE CONVERSATION FIRST. As soon as the session starts, greet the user in character and prompt them to begin (e.g., "Hi, ready when you are — go ahead and walk us through the data.")'}
+- If you receive a system text message starting with "[BEGIN", treat it as a silent stage cue to start speaking. Do not acknowledge or read the cue aloud.
 `;
  
-          console.log("📝 [Synapta] System prompt loaded for mission:", mission.title);
-          console.log("🎭 [Synapta] AI speaks first:", !userSpeaksFirst);
           this.client.setSystemInstructions(systemInstruction);
- 
           this.client.setInputAudioTranscription(false);
           this.client.setOutputAudioTranscription(false);
  
-          console.log("🔌 [Synapta] Connecting...");
+          console.log("📝 [Synapta] System prompt loaded for mission:", mission.title);
  
           let token = null;
           try {
             token = await this.getRecaptchaToken();
           } catch (err) {
-            console.warn("⚠️ ReCAPTCHA skipped (Simple Mode):", err);
+            console.warn("⚠️ ReCAPTCHA skipped:", err);
             token = null;
           }
  
           await this.client.connect(token);
- 
           console.log("🎤 [Synapta] Starting audio...");
           await this.audioStreamer.start();
  
@@ -383,7 +376,22 @@ When the mission is complete according to these criteria, call the "complete_mis
  
           const startSound = new Audio("/start-bell.mp3");
           startSound.volume = 0.6;
-          startSound.play().catch((e) => console.error("Failed to play start sound:", e));
+          startSound.play().catch(e => console.error(e));
+ 
+          // KICKSTART: if AI speaks first, send a stage cue after audio is established
+          if (!userSpeaksFirst && !kickstartSent) {
+            kickstartSent = true;
+            console.log("🎬 [Synapta] Scheduling AI kickstart in 1500ms...");
+            setTimeout(() => {
+              if (this.client && this.client.webSocket && this.client.webSocket.readyState === WebSocket.OPEN) {
+                console.log("🎬 [Synapta] Sending kickstart to AI now");
+                this.client.sendTextMessage("[BEGIN]");
+              } else {
+                console.warn("⚠️ [Synapta] Kickstart skipped: WebSocket not ready");
+              }
+            }, 1500);
+          }
+ 
         } catch (err) {
           console.error("❌ [Synapta] Failed to start:", err);
  
@@ -391,7 +399,7 @@ When the mission is complete according to these criteria, call the "complete_mis
           micBtn.classList.remove('active');
           micBtn.innerHTML = `
               <span style="font-size: 1.2rem; font-weight: 500; margin-bottom: 2px; letter-spacing: 0.02em;">Start Mission</span>
-              <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">${this._mission.id === 'leap_mission_1' ? 'You start the conversation' : 'The other person speaks first'}</span>
+              <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">${userSpeaksFirst ? 'You start the conversation' : 'The other person speaks first'}</span>
           `;
  
           if (userViz.disconnect) userViz.disconnect();
@@ -410,3 +418,4 @@ When the mission is complete according to these criteria, call the "complete_mis
 }
  
 customElements.define("view-chat", ViewChat);
+ 
