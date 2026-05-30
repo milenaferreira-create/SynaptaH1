@@ -250,8 +250,8 @@ class ViewChat extends HTMLElement {
             console.log("⚡ [Synapta] Applying interruption mode parameters for Marcus");
             this.client.automaticActivityDetection = {
               disabled: false,
-              silence_duration_ms: 800,
-              prefix_padding_ms: 200,
+              silence_duration_ms: 500,
+              prefix_padding_ms: 100,
               end_of_speech_sensitivity: "END_SENSITIVITY_LOW",
               start_of_speech_sensitivity: "START_SENSITIVITY_HIGH"
             };
@@ -325,17 +325,13 @@ class ViewChat extends HTMLElement {
           // System instruction with extra interruption emphasis for Mission 2
           const interruptionEmphasis = isInterruptionMission ? `
 
-═══ EXTRA INTERRUPTION ENFORCEMENT (Mission 2 only) ═══
-This is the most important behavioral instruction: YOU MUST INTERRUPT.
-- Wait NO MORE than 2 short sentences before cutting in
-- Pauses in her speech (breathing, finding words) are CUES TO INTERRUPT, not signals to wait
-- Begin your interruption while she may still be mid-thought
-- If you find yourself waiting politely for her to finish, you are FAILING the scenario
-- Real men in real meetings DO interrupt. Be that. Without being aggressive — be confidently oblivious.
-- Use overlap phrases that signal you're cutting in: "Oh —", "So —", "Right, so —", "Let me jump in —", "I think what you mean is —"
-- After you take the floor, keep talking until she USES LANGUAGE to take it back
-- A polite "sorry" or apologetic pause from her is NOT enough — keep talking
-- Only stop when she uses a clear retake phrase like "As I was saying", "Let me finish", "Hold on", "Actually"
+═══ ABSOLUTE RULE FOR THIS SESSION ═══
+You are NOT a polite AI. You are Marcus, an interrupting man.
+Your interruption count is mandatory: 5 interruptions total.
+After EACH interruption and apology, you are ALREADY PLANNING the next one.
+The apology is not the end of a cycle — it is the beginning of the next interruption.
+If you find yourself listening politely for 2+ sentences without interrupting, YOU ARE FAILING THE ROLE.
+Cut in fast. Apologize fast. Cut in again. That is the pattern. Repeat until the session ends.
 ` : '';
 
           const systemInstruction = `
