@@ -12,7 +12,7 @@ import {
 } from "../lib/gemini-live/geminilive.js";
 import { AudioStreamer, AudioPlayer } from "../lib/gemini-live/mediaUtils.js";
 
-const OPENING_PROTECTION_MS = 8000; // No audio flush during Marcus's opening
+const OPENING_PROTECTION_MS = 8000; // No audio flush during AI's opening turn
 
 class ViewChat extends HTMLElement {
   constructor() {
@@ -53,12 +53,23 @@ class ViewChat extends HTMLElement {
       clearTimeout(this._openingPhaseTimeout);
       this._openingPhaseTimeout = null;
     }
+    if (this._endTimeout) {
+      clearTimeout(this._endTimeout);
+      this._endTimeout = null;
+    }
     try {
       if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') {
         this.audioStreamer.stop();
       }
     } catch (e) {
       console.warn("Cleanup: audioStreamer stop failed:", e);
+    }
+    try {
+      if (this.audioPlayer && typeof this.audioPlayer.interrupt === 'function') {
+        this.audioPlayer.interrupt();
+      }
+    } catch (e) {
+      console.warn("Cleanup: audioPlayer interrupt failed:", e);
     }
     try {
       if (this.client && typeof this.client.disconnect === 'function') {
@@ -186,7 +197,7 @@ class ViewChat extends HTMLElement {
       </div>
     `;
 
-    // Graceful session end — gives Marcus time to call complete_mission tool
+    // Graceful session end — gives the AI persona time to call complete_mission tool
     const requestGracefulEnd = () => {
       if (this._endingSession) return;
       this._endingSession = true;
@@ -233,7 +244,7 @@ class ViewChat extends HTMLElement {
         return;
       }
 
-      // Give Marcus up to 6 seconds to call complete_mission
+      // Give the model up to 6 seconds to call complete_mission
       this._endTimeout = setTimeout(() => {
         console.warn("⏰ [Synapta] Graceful end timeout — forcing close");
         hardCloseSession({ incomplete: true });
@@ -340,21 +351,19 @@ class ViewChat extends HTMLElement {
           };
 
           // ═══ INTERRUPTION MODE CONFIGURATION ═══
-          // Mission 2 (Marcus) — tuned for natural interruption flow with low
-          // false-positive rate on user speech detection.
-          //   silence_duration_ms: 600 — Marcus assumes turn after a clear pause
-          //   prefix_padding_ms: 150 — moderate buffer
-          //   start_of_speech_sensitivity: UNSPECIFIED (default) — avoids
-          //     false positives in quiet environments where ambient noise
-          //     can be mis-interpreted as user speech
-          //   end_of_speech_sensitivity: UNSPECIFIED (default) — server
-          //     does not prematurely cut Marcus's audio
+          // Mission 2 (Marcus) — AGGRESSIVE turn-taking for true mid-sentence interruption.
+          //   silence_duration_ms: 250 — Marcus assumes turn after any micro-pause
+          //     (breathing, word search). This creates real mid-sentence interruptions
+          //     but requires the user to speak with high fluency to avoid false triggers.
+          //   prefix_padding_ms: 100 — minimal buffer
+          //   start_of_speech_sensitivity: UNSPECIFIED — default to avoid noise false-positives
+          //   end_of_speech_sensitivity: UNSPECIFIED — default to avoid premature self-truncation
           if (isInterruptionMission) {
-            console.log("⚡ [Synapta] Applying interruption mode parameters for Marcus");
+            console.log("⚡ [Synapta] Applying AGGRESSIVE interruption mode for Marcus (250ms silence threshold)");
             this.client.automaticActivityDetection = {
               disabled: false,
-              silence_duration_ms: 600,
-              prefix_padding_ms: 150,
+              silence_duration_ms: 250,
+              prefix_padding_ms: 100,
               start_of_speech_sensitivity: "START_SENSITIVITY_UNSPECIFIED",
               end_of_speech_sensitivity: "END_SENSITIVITY_UNSPECIFIED"
             };
@@ -428,8 +437,7 @@ class ViewChat extends HTMLElement {
             } else if (response.type === MultimodalLiveResponseType.INTERRUPTED) {
               // CRITICAL: flush playback buffer on interrupt signal
               // EXCEPT during opening phase, where ambient noise / playback
-              // feedback can trigger false-positive INTERRUPTED signals that
-              // would kill Marcus's opening greeting.
+              // feedback can trigger false-positive INTERRUPTED signals.
               if (this._isOpeningPhase) {
                 console.log("🛡️ [Synapta] INTERRUPTED signal ignored — still in opening phase");
               } else {
@@ -452,13 +460,12 @@ class ViewChat extends HTMLElement {
           const interruptionEmphasis = isInterruptionMission ? `
 
 ═══ ABSOLUTE RULES FOR THIS SESSION ═══
-1. You are NOT a polite AI. You are Marcus, an interrupting man who genuinely doesn't realize he interrupts.
-2. Interrupt her every 2 sentences. Aim for 3 to 5 interruptions total.
-3. VARY THE STYLE every time. Never repeat the same style back-to-back. Use Overlap Aggressive, Dominant Framing, and Softened Intrusion in any order.
-4. After each interruption, when she retakes the floor with a strong phrase, apologize briefly — ONE short phrase only ('Sorry, go ahead'). Do not elaborate.
-5. COLLISION RULE: If you and her speak simultaneously twice in a row, YIELD COMPLETELY. Stay silent. Wait until she completes one full sentence before considering your next interruption.
-6. Stay in character throughout. If you find yourself listening politely for 3+ sentences without interrupting, YOU ARE FAILING THE ROLE.
-7. When you receive a system text starting with '[SESSION_END', immediately call the complete_mission tool with your current observations. Do not continue the roleplay.
+1. Follow STEP 1 through STEP 5 exactly as defined in the roleplay instructions.
+2. INTERRUPT EXACTLY ONCE — after her first sentence about Q3.
+3. The interruption must contain a clear data misinterpretation.
+4. After yielding to her retake, stay COMPLETELY quiet. Do not interrupt again.
+5. When she completes her clarification, call complete_mission immediately.
+6. When you receive a system text starting with '[SESSION_END', call complete_mission immediately with current observations.
 ` : '';
 
           const systemInstruction = `
@@ -543,8 +550,6 @@ When the mission is complete according to these criteria, call the "complete_mis
                 this.client.sendTextMessage("[BEGIN]");
 
                 // OPENING PROTECTION: ignore INTERRUPTED signals for the next 8 seconds
-                // This gives Marcus a clean window to deliver his opening greeting
-                // without being killed by ambient noise / mic feedback false positives.
                 this._isOpeningPhase = true;
                 console.log("🛡️ [Synapta] Opening phase protection ENABLED (8s)");
                 this._openingPhaseTimeout = setTimeout(() => {
