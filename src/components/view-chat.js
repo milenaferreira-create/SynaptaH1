@@ -360,4 +360,197 @@ class ViewChat extends HTMLElement {
                   type: "INTEGER",
                   description: "Rating 1-3: 1=Emergent (struggled), 2=Capable (solid with hesitation), 3=Authoritative (native-level)",
                 },
-                feedba
+                feedback_pointers: {
+                  type: "ARRAY",
+                  items: { type: "STRING" },
+                  description: "3 specific feedback points in Portuguese addressing Clarity, Authority, Fluency",
+                },
+              },
+              required: ["score", "feedback_pointers"],
+            },
+            ["score", "feedback_pointers"]
+          );
+
+          completeMissionTool.functionToCall = (args) => {
+            console.log("🏆 [Synapta] Mission Complete!", args);
+
+            if (this._endTimeout) {
+              clearTimeout(this._endTimeout);
+              this._endTimeout = null;
+            }
+
+            const winnerSound = new Audio("/winner-bell.mp3");
+            winnerSound.volume = 0.6;
+            winnerSound.play().catch(e => console.error(e));
+
+            const levels = { 1: "Emergent", 2: "Capable", 3: "Authoritative" };
+            const level = levels[args.score] || "Capable";
+
+            setTimeout(() => {
+              hardCloseSession({
+                score: args.score.toString(),
+                level: level,
+                notes: args.feedback_pointers
+              });
+            }, 2500);
+          };
+
+          this.client.addFunction(completeMissionTool);
+
+          this.client.onConnectionStarted = () => console.log("🚀 [Synapta] Connection started");
+          this.client.onOpen = () => console.log("🔓 [Synapta] WebSocket open");
+          this.client.onError = (e) => console.error("❌ [Synapta] Error:", e);
+          this.client.onClose = (event) => {
+            console.log("🔒 [Synapta] Connection closed", event ? `reason: ${event.reason || 'unknown'}` : '');
+            if (this._endingSession && this._endTimeout) {
+              clearTimeout(this._endTimeout);
+              this._endTimeout = null;
+              hardCloseSession({ incomplete: true });
+            }
+          };
+
+          this.client.onReceiveResponse = (response) => {
+            if (response.type === MultimodalLiveResponseType.AUDIO) {
+              this.audioPlayer.play(response.data);
+            } else if (response.type === MultimodalLiveResponseType.INTERRUPTED) {
+              // CRITICAL: flush playback buffer immediately on interrupt signal
+              // Without this, Marcus keeps talking from buffered audio after being interrupted
+              console.log("🗣️ [Synapta] User interrupted — flushing audio buffer");
+              try {
+                if (this.audioPlayer && typeof this.audioPlayer.interrupt === 'function') {
+                  this.audioPlayer.interrupt();
+                }
+              } catch(e) { console.warn("Audio flush failed:", e); }
+            } else if (response.type === MultimodalLiveResponseType.TOOL_CALL) {
+              if (response.data.functionCalls) {
+                response.data.functionCalls.forEach((fc) => {
+                  this.client.callFunction(fc.name, fc.args);
+                });
+              }
+            }
+          };
+
+          const interruptionEmphasis = isInterruptionMission ? `
+
+═══ ABSOLUTE RULES FOR THIS SESSION ═══
+1. You are NOT a polite AI. You are Marcus, an interrupting man who genuinely doesn't realize he interrupts.
+2. Interrupt her every 2 sentences. Aim for 3 to 5 interruptions total.
+3. VARY THE STYLE every time. Never repeat the same style back-to-back. Use Overlap Aggressive, Dominant Framing, and Softened Intrusion in any order.
+4. After each interruption, when she retakes the floor with a strong phrase, apologize briefly — ONE short phrase only ('Sorry, go ahead'). Do not elaborate.
+5. COLLISION RULE: If you and her speak simultaneously twice in a row, YIELD COMPLETELY. Stay silent. Wait until she completes one full sentence before considering your next interruption.
+6. Stay in character throughout. If you find yourself listening politely for 3+ sentences without interrupting, YOU ARE FAILING THE ROLE.
+7. When you receive a system text starting with '[SESSION_END', immediately call the complete_mission tool with your current observations. Do not continue the roleplay.
+` : '';
+
+          const systemInstruction = `
+You are an AI roleplay partner for The Hypatia Journey, a leadership development program for women in STEM. Your task is to play a realistic professional character in an English-language scenario.
+
+═══ CHARACTER ═══
+You are: ${mission.ai_persona_name}
+Role: ${mission.ai_persona_role}
+Personality: ${mission.ai_persona_personality}
+
+═══ SCENARIO ═══
+${mission.desc}
+
+═══ HOW TO PLAY THE SCENE ═══
+${mission.roleplay_instruction}
+
+═══ INTERACTION RULES ═══
+${mission.interaction_guidelines}
+
+═══ MISSION COMPLETION CRITERIA ═══
+${mission.mission_completion}
+
+When the mission is complete according to these criteria, call the "complete_mission" tool with:
+- score: 1 (Emergent), 2 (Capable), or 3 (Authoritative)
+- feedback_pointers: 3 specific points in Portuguese addressing Clarity, Authority, Fluency. Quote exact phrases when useful.
+
+═══ CRITICAL RULES ═══
+- Stay in character as ${mission.ai_persona_name}. Do not break the fourth wall.
+- Do not act as an AI assistant.
+- Speak only in English during the scenario.
+- Be a realistic professional, not a teacher. No grammar lectures.
+- ${userSpeaksFirst ? 'WAIT for the user to speak first.' : 'YOU MUST OPEN THE CONVERSATION FIRST. As soon as the session starts, greet the user in character and prompt them to begin.'}
+- If you receive a system text message starting with "[BEGIN", treat it as a silent stage cue to start speaking. Do not acknowledge or read the cue aloud.
+- If you receive a system text message starting with "[SESSION_END", immediately call the complete_mission tool with your current observations. Do NOT speak before calling the tool.${interruptionEmphasis}
+`;
+
+          this.client.setSystemInstructions(systemInstruction);
+          this.client.setInputAudioTranscription(false);
+          this.client.setOutputAudioTranscription(false);
+
+          console.log("📝 [Synapta] System prompt loaded for mission:", mission.title);
+          if (isInterruptionMission) {
+            console.log("⚡ [Synapta] Interruption emphasis added to prompt");
+          }
+
+          let token = null;
+          try {
+            token = await this.getRecaptchaToken();
+          } catch (err) {
+            console.warn("⚠️ ReCAPTCHA skipped:", err);
+            token = null;
+          }
+
+          await this.client.connect(token);
+          console.log("🎤 [Synapta] Starting audio...");
+          await this.audioStreamer.start();
+
+          if (this.audioStreamer.audioContext && this.audioStreamer.source) {
+            userViz.connect(this.audioStreamer.audioContext, this.audioStreamer.source);
+          }
+
+          await this.audioPlayer.init();
+
+          if (this.audioPlayer.audioContext && this.audioPlayer.gainNode) {
+            modelViz.connect(this.audioPlayer.audioContext, this.audioPlayer.gainNode);
+          }
+
+          console.log("✨ [Synapta] Session active");
+          statusEl.textContent = isInterruptionMission ? "Connected · Marcus is listening (will interrupt)" : "Connected · listening";
+          statusEl.style.color = "var(--color-accent-tertiary)";
+
+          const startSound = new Audio("/start-bell.mp3");
+          startSound.volume = 0.6;
+          startSound.play().catch(e => console.error(e));
+
+          if (!userSpeaksFirst && !kickstartSent) {
+            kickstartSent = true;
+            console.log("🎬 [Synapta] Scheduling AI kickstart in 1500ms...");
+            setTimeout(() => {
+              if (this.client && this.client.webSocket && this.client.webSocket.readyState === WebSocket.OPEN) {
+                console.log("🎬 [Synapta] Sending kickstart to AI now");
+                this.client.sendTextMessage("[BEGIN]");
+              } else {
+                console.warn("⚠️ [Synapta] Kickstart skipped: WebSocket not ready");
+              }
+            }, 1500);
+          }
+
+        } catch (err) {
+          console.error("❌ [Synapta] Failed to start:", err);
+
+          isSpeaking = false;
+          micBtn.classList.remove('active');
+          micBtn.innerHTML = `
+              <span style="font-size: 1.2rem; font-weight: 500; margin-bottom: 2px; letter-spacing: 0.02em;">Start Mission</span>
+              <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">${userSpeaksFirst ? 'You start the conversation' : 'The other person speaks first'}</span>
+          `;
+
+          if (userViz.disconnect) userViz.disconnect();
+          if (modelViz.disconnect) modelViz.disconnect();
+          statusEl.textContent = "";
+
+          alert("Failed to start session: " + err.message);
+        }
+      }
+    });
+  }
+
+  async getRecaptchaToken() {
+    return null;
+  }
+}
+
+customElements.define("view-chat", ViewChat);
