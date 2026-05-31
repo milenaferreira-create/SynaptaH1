@@ -17,6 +17,7 @@ class ViewChat extends HTMLElement {
     super();
     this._mission = null;
     this._rendered = false;
+    this._endingSession = false;
   }
 
   set mission(value) {
@@ -151,6 +152,13 @@ class ViewChat extends HTMLElement {
             flex-direction: row !important;
             gap: 12px;
           }
+          .chat-cta-btn.closing {
+            background: var(--color-accent-secondary) !important;
+            flex-direction: row !important;
+            gap: 12px;
+            opacity: 0.7;
+            cursor: wait;
+          }
         </style>
 
         <div style="margin-bottom: var(--spacing-xxl); display: flex; flex-direction: column; gap: var(--spacing-lg); align-items: center;">
@@ -170,7 +178,71 @@ class ViewChat extends HTMLElement {
       </div>
     `;
 
-    const doEndSession = () => {
+    // Graceful session end — gives Marcus time to call complete_mission tool
+    const requestGracefulEnd = () => {
+      if (this._endingSession) return;
+      this._endingSession = true;
+
+      console.log("⏳ [Synapta] Requesting graceful session end...");
+
+      const micBtn = this.querySelector("#mic-btn");
+      const statusEl = this.querySelector("#connection-status");
+
+      if (micBtn) {
+        micBtn.classList.remove('active');
+        micBtn.classList.add('closing');
+        micBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span style="font-weight: 500; font-size: 1rem; letter-spacing: 0.05em; text-transform: uppercase;">Closing...</span>
+        `;
+        micBtn.disabled = true;
+      }
+      if (statusEl) {
+        statusEl.textContent = "Generating your feedback report...";
+        statusEl.style.color = "var(--color-accent-secondary)";
+      }
+
+      // Stop user microphone immediately so collisions stop
+      try {
+        if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') {
+          this.audioStreamer.stop();
+        }
+      } catch(e) { console.warn("Streamer stop on graceful end failed:", e); }
+
+      // Send session-end cue to the model so it calls complete_mission
+      try {
+        if (this.client && this.client.webSocket && this.client.webSocket.readyState === WebSocket.OPEN) {
+          console.log("📤 [Synapta] Sending [SESSION_END] cue to model");
+          this.client.sendTextMessage("[SESSION_END] The user has ended the session. Call the complete_mission tool now with your current observations.");
+        } else {
+          console.warn("⚠️ [Synapta] Cannot send session end cue: WebSocket not open");
+          // Fall back to immediate hard close
+          hardCloseSession({ incomplete: true });
+          return;
+        }
+      } catch(e) {
+        console.error("Failed to send session end cue:", e);
+        hardCloseSession({ incomplete: true });
+        return;
+      }
+
+      // Give Marcus up to 6 seconds to call complete_mission
+      // If he does, the function handler in completeMissionTool will close everything.
+      // If he doesn't, we hard-close with incomplete flag.
+      this._endTimeout = setTimeout(() => {
+        console.warn("⏰ [Synapta] Graceful end timeout — forcing close");
+        hardCloseSession({ incomplete: true });
+      }, 6000);
+    };
+
+    const hardCloseSession = (result) => {
+      console.log("🔚 [Synapta] Hard closing session");
+
+      if (this._endTimeout) {
+        clearTimeout(this._endTimeout);
+        this._endTimeout = null;
+      }
+
       try { if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') this.audioStreamer.stop(); } catch(e) {}
       try { if (this.client && typeof this.client.disconnect === 'function') this.client.disconnect(); } catch(e) {}
       try { if (this.audioPlayer && typeof this.audioPlayer.interrupt === 'function') this.audioPlayer.interrupt(); } catch(e) {}
@@ -180,9 +252,7 @@ class ViewChat extends HTMLElement {
       if (userViz && userViz.disconnect) userViz.disconnect();
       if (modelViz && modelViz.disconnect) modelViz.disconnect();
 
-      console.log("👋 [Synapta] Session ended by user");
-
-      const result = { incomplete: true };
+      console.log("👋 [Synapta] Session ended");
 
       this.dispatchEvent(
         new CustomEvent("navigate", {
@@ -194,6 +264,8 @@ class ViewChat extends HTMLElement {
 
     const backBtn = this.querySelector("#back-to-missions");
     backBtn.addEventListener("click", () => {
+      if (this._endTimeout) clearTimeout(this._endTimeout);
+
       try { if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') this.audioStreamer.stop(); } catch(e) {}
       try { if (this.client && typeof this.client.disconnect === 'function') this.client.disconnect(); } catch(e) {}
       try { if (this.audioPlayer && typeof this.audioPlayer.interrupt === 'function') this.audioPlayer.interrupt(); } catch(e) {}
@@ -219,6 +291,9 @@ class ViewChat extends HTMLElement {
     let kickstartSent = false;
 
     micBtn.addEventListener("click", async () => {
+      // Block clicks while gracefully ending
+      if (this._endingSession) return;
+
       isSpeaking = !isSpeaking;
 
       if (isSpeaking) {
@@ -228,8 +303,8 @@ class ViewChat extends HTMLElement {
             <span style="font-weight: 500; font-size: 1rem; letter-spacing: 0.05em; text-transform: uppercase;">End Mission</span>
         `;
       } else {
-        micBtn.classList.remove('active');
-        doEndSession();
+        // Graceful end instead of hard close
+        requestGracefulEnd();
         return;
       }
 
@@ -239,6 +314,7 @@ class ViewChat extends HTMLElement {
         statusEl.textContent = "Connecting...";
         statusEl.style.color = "var(--color-text-sub)";
         kickstartSent = false;
+        this._endingSession = false;
 
         try {
           this.client = new GeminiLiveAPI();
@@ -246,24 +322,26 @@ class ViewChat extends HTMLElement {
 
           // ═══ INTERRUPTION MODE CONFIGURATION ═══
           // Only for Mission 2 (Marcus): aggressive turn-taking parameters
+          // END_SENSITIVITY_HIGH: Marcus is patient about finishing his own turn
+          //   (prevents self-truncated interruptions)
+          // START_SENSITIVITY_HIGH: Marcus is eager to take the floor when she pauses
           if (isInterruptionMission) {
             console.log("⚡ [Synapta] Applying interruption mode parameters for Marcus");
             this.client.automaticActivityDetection = {
               disabled: false,
               silence_duration_ms: 500,
               prefix_padding_ms: 100,
-              end_of_speech_sensitivity: "END_SENSITIVITY_LOW",
+              end_of_speech_sensitivity: "END_SENSITIVITY_HIGH",
               start_of_speech_sensitivity: "START_SENSITIVITY_HIGH"
             };
           }
-          // Other missions keep default parameters (set in GeminiLiveAPI constructor)
 
           this.audioStreamer = new AudioStreamer(this.client);
           this.audioPlayer = new AudioPlayer();
 
           const completeMissionTool = new FunctionCallDefinition(
             "complete_mission",
-            "Call this tool when the user has successfully completed the mission objective.",
+            "Call this tool when the user has successfully completed the mission objective OR when receiving a [SESSION_END] cue.",
             {
               type: "OBJECT",
               properties: {
@@ -284,6 +362,13 @@ class ViewChat extends HTMLElement {
 
           completeMissionTool.functionToCall = (args) => {
             console.log("🏆 [Synapta] Mission Complete!", args);
+
+            // Clear graceful end timeout — model responded in time
+            if (this._endTimeout) {
+              clearTimeout(this._endTimeout);
+              this._endTimeout = null;
+            }
+
             const winnerSound = new Audio("/winner-bell.mp3");
             winnerSound.volume = 0.6;
             winnerSound.play().catch(e => console.error(e));
@@ -292,14 +377,11 @@ class ViewChat extends HTMLElement {
             const level = levels[args.score] || "Capable";
 
             setTimeout(() => {
-              try { if (this.audioStreamer && this.audioStreamer.stop) this.audioStreamer.stop(); } catch(e) {}
-              try { if (this.client && this.client.disconnect) this.client.disconnect(); } catch(e) {}
-              try { if (this.audioPlayer && this.audioPlayer.interrupt) this.audioPlayer.interrupt(); } catch(e) {}
-
-              this.dispatchEvent(new CustomEvent("navigate", {
-                bubbles: true,
-                detail: { view: "summary", result: { score: args.score.toString(), level: level, notes: args.feedback_pointers } },
-              }));
+              hardCloseSession({
+                score: args.score.toString(),
+                level: level,
+                notes: args.feedback_pointers
+              });
             }, 2500);
           };
 
@@ -308,7 +390,15 @@ class ViewChat extends HTMLElement {
           this.client.onConnectionStarted = () => console.log("🚀 [Synapta] Connection started");
           this.client.onOpen = () => console.log("🔓 [Synapta] WebSocket open");
           this.client.onError = (e) => console.error("❌ [Synapta] Error:", e);
-          this.client.onClose = () => console.log("🔒 [Synapta] Connection closed");
+          this.client.onClose = () => {
+            console.log("🔒 [Synapta] Connection closed");
+            // If WebSocket closes before we got complete_mission, ensure we still navigate
+            if (this._endingSession && this._endTimeout) {
+              clearTimeout(this._endTimeout);
+              this._endTimeout = null;
+              hardCloseSession({ incomplete: true });
+            }
+          };
 
           this.client.onReceiveResponse = (response) => {
             if (response.type === MultimodalLiveResponseType.AUDIO) {
@@ -325,13 +415,14 @@ class ViewChat extends HTMLElement {
           // System instruction with extra interruption emphasis for Mission 2
           const interruptionEmphasis = isInterruptionMission ? `
 
-═══ ABSOLUTE RULE FOR THIS SESSION ═══
-You are NOT a polite AI. You are Marcus, an interrupting man.
-Your interruption count is mandatory: 5 interruptions total.
-After EACH interruption and apology, you are ALREADY PLANNING the next one.
-The apology is not the end of a cycle — it is the beginning of the next interruption.
-If you find yourself listening politely for 2+ sentences without interrupting, YOU ARE FAILING THE ROLE.
-Cut in fast. Apologize fast. Cut in again. That is the pattern. Repeat until the session ends.
+═══ ABSOLUTE RULES FOR THIS SESSION ═══
+1. You are NOT a polite AI. You are Marcus, an interrupting man who genuinely doesn't realize he interrupts.
+2. Interrupt her every 2 sentences. Aim for 3 to 5 interruptions total.
+3. VARY THE STYLE every time. Never repeat the same style back-to-back. Use Overlap Aggressive, Dominant Framing, and Softened Intrusion in any order.
+4. After each interruption, when she retakes the floor with a strong phrase, apologize briefly — ONE short phrase only ('Sorry, go ahead'). Do not elaborate.
+5. COLLISION RULE: If you and her speak simultaneously twice in a row, YIELD COMPLETELY. Stay silent. Wait until she completes one full sentence before considering your next interruption.
+6. Stay in character throughout. If you find yourself listening politely for 3+ sentences without interrupting, YOU ARE FAILING THE ROLE.
+7. When you receive a system text starting with '[SESSION_END', immediately call the complete_mission tool with your current observations. Do not continue the roleplay.
 ` : '';
 
           const systemInstruction = `
@@ -364,7 +455,8 @@ When the mission is complete according to these criteria, call the "complete_mis
 - Speak only in English during the scenario.
 - Be a realistic professional, not a teacher. No grammar lectures.
 - ${userSpeaksFirst ? 'WAIT for the user to speak first.' : 'YOU MUST OPEN THE CONVERSATION FIRST. As soon as the session starts, greet the user in character and prompt them to begin.'}
-- If you receive a system text message starting with "[BEGIN", treat it as a silent stage cue to start speaking. Do not acknowledge or read the cue aloud.${interruptionEmphasis}
+- If you receive a system text message starting with "[BEGIN", treat it as a silent stage cue to start speaking. Do not acknowledge or read the cue aloud.
+- If you receive a system text message starting with "[SESSION_END", immediately call the complete_mission tool with your current observations. Do NOT speak before calling the tool.${interruptionEmphasis}
 `;
 
           this.client.setSystemInstructions(systemInstruction);
