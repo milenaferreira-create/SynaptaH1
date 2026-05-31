@@ -12,12 +12,16 @@ import {
 } from "../lib/gemini-live/geminilive.js";
 import { AudioStreamer, AudioPlayer } from "../lib/gemini-live/mediaUtils.js";
 
+const OPENING_PROTECTION_MS = 8000; // No audio flush during Marcus's opening
+
 class ViewChat extends HTMLElement {
   constructor() {
     super();
     this._mission = null;
     this._rendered = false;
     this._endingSession = false;
+    this._isOpeningPhase = false;
+    this._openingPhaseTimeout = null;
   }
 
   set mission(value) {
@@ -45,6 +49,10 @@ class ViewChat extends HTMLElement {
   }
 
   disconnectedCallback() {
+    if (this._openingPhaseTimeout) {
+      clearTimeout(this._openingPhaseTimeout);
+      this._openingPhaseTimeout = null;
+    }
     try {
       if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') {
         this.audioStreamer.stop();
@@ -239,6 +247,10 @@ class ViewChat extends HTMLElement {
         clearTimeout(this._endTimeout);
         this._endTimeout = null;
       }
+      if (this._openingPhaseTimeout) {
+        clearTimeout(this._openingPhaseTimeout);
+        this._openingPhaseTimeout = null;
+      }
 
       try { if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') this.audioStreamer.stop(); } catch(e) {}
       try { if (this.client && typeof this.client.disconnect === 'function') this.client.disconnect(); } catch(e) {}
@@ -262,6 +274,7 @@ class ViewChat extends HTMLElement {
     const backBtn = this.querySelector("#back-to-missions");
     backBtn.addEventListener("click", () => {
       if (this._endTimeout) clearTimeout(this._endTimeout);
+      if (this._openingPhaseTimeout) clearTimeout(this._openingPhaseTimeout);
 
       try { if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') this.audioStreamer.stop(); } catch(e) {}
       try { if (this.client && typeof this.client.disconnect === 'function') this.client.disconnect(); } catch(e) {}
@@ -310,16 +323,14 @@ class ViewChat extends HTMLElement {
         statusEl.style.color = "var(--color-text-sub)";
         kickstartSent = false;
         this._endingSession = false;
+        this._isOpeningPhase = false;
 
         try {
           this.client = new GeminiLiveAPI();
           this.client.setProactivity({ proactiveAudio: userSpeaksFirst });
 
           // ═══ CONTEXT WINDOW COMPRESSION ═══
-          // Enable sliding window compression to extend sessions beyond
-          // the default 15-minute audio limit. For Hypatia Journey sessions
-          // (15-20 min calls), this prevents "Session time limit reached".
-          // The server prunes oldest turns automatically when token budget exceeded.
+          // Sliding window: prevents "Session time limit reached" at ~10-15 min mark
           console.log("🪟 [Synapta] Enabling context window compression");
           this.client.contextWindowCompression = {
             slidingWindow: {
@@ -329,20 +340,22 @@ class ViewChat extends HTMLElement {
           };
 
           // ═══ INTERRUPTION MODE CONFIGURATION ═══
-          // Only for Mission 2 (Marcus): tuned for natural interruption flow.
-          // silence_duration_ms: 600ms — Marcus assumes turn after a short pause
-          //   (long enough to let her finish a sentence, short enough to feel interruptive)
-          // prefix_padding_ms: 150ms — moderate audio context buffer
-          // start_of_speech_sensitivity HIGH — Marcus eager to take the floor
-          // end_of_speech_sensitivity UNSPECIFIED (default) — server doesn't
-          //   prematurely cut Marcus's audio when she briefly overlaps
+          // Mission 2 (Marcus) — tuned for natural interruption flow with low
+          // false-positive rate on user speech detection.
+          //   silence_duration_ms: 600 — Marcus assumes turn after a clear pause
+          //   prefix_padding_ms: 150 — moderate buffer
+          //   start_of_speech_sensitivity: UNSPECIFIED (default) — avoids
+          //     false positives in quiet environments where ambient noise
+          //     can be mis-interpreted as user speech
+          //   end_of_speech_sensitivity: UNSPECIFIED (default) — server
+          //     does not prematurely cut Marcus's audio
           if (isInterruptionMission) {
             console.log("⚡ [Synapta] Applying interruption mode parameters for Marcus");
             this.client.automaticActivityDetection = {
               disabled: false,
               silence_duration_ms: 600,
               prefix_padding_ms: 150,
-              start_of_speech_sensitivity: "START_SENSITIVITY_HIGH",
+              start_of_speech_sensitivity: "START_SENSITIVITY_UNSPECIFIED",
               end_of_speech_sensitivity: "END_SENSITIVITY_UNSPECIFIED"
             };
           }
@@ -413,14 +426,20 @@ class ViewChat extends HTMLElement {
             if (response.type === MultimodalLiveResponseType.AUDIO) {
               this.audioPlayer.play(response.data);
             } else if (response.type === MultimodalLiveResponseType.INTERRUPTED) {
-              // CRITICAL: flush playback buffer immediately on interrupt signal
-              // Without this, Marcus keeps talking from buffered audio after being interrupted
-              console.log("🗣️ [Synapta] User interrupted — flushing audio buffer");
-              try {
-                if (this.audioPlayer && typeof this.audioPlayer.interrupt === 'function') {
-                  this.audioPlayer.interrupt();
-                }
-              } catch(e) { console.warn("Audio flush failed:", e); }
+              // CRITICAL: flush playback buffer on interrupt signal
+              // EXCEPT during opening phase, where ambient noise / playback
+              // feedback can trigger false-positive INTERRUPTED signals that
+              // would kill Marcus's opening greeting.
+              if (this._isOpeningPhase) {
+                console.log("🛡️ [Synapta] INTERRUPTED signal ignored — still in opening phase");
+              } else {
+                console.log("🗣️ [Synapta] User interrupted — flushing audio buffer");
+                try {
+                  if (this.audioPlayer && typeof this.audioPlayer.interrupt === 'function') {
+                    this.audioPlayer.interrupt();
+                  }
+                } catch(e) { console.warn("Audio flush failed:", e); }
+              }
             } else if (response.type === MultimodalLiveResponseType.TOOL_CALL) {
               if (response.data.functionCalls) {
                 response.data.functionCalls.forEach((fc) => {
@@ -522,6 +541,17 @@ When the mission is complete according to these criteria, call the "complete_mis
               if (this.client && this.client.webSocket && this.client.webSocket.readyState === WebSocket.OPEN) {
                 console.log("🎬 [Synapta] Sending kickstart to AI now");
                 this.client.sendTextMessage("[BEGIN]");
+
+                // OPENING PROTECTION: ignore INTERRUPTED signals for the next 8 seconds
+                // This gives Marcus a clean window to deliver his opening greeting
+                // without being killed by ambient noise / mic feedback false positives.
+                this._isOpeningPhase = true;
+                console.log("🛡️ [Synapta] Opening phase protection ENABLED (8s)");
+                this._openingPhaseTimeout = setTimeout(() => {
+                  this._isOpeningPhase = false;
+                  console.log("🛡️ [Synapta] Opening phase protection DISABLED — normal interruption flow active");
+                  this._openingPhaseTimeout = null;
+                }, OPENING_PROTECTION_MS);
               } else {
                 console.warn("⚠️ [Synapta] Kickstart skipped: WebSocket not ready");
               }
