@@ -54,20 +54,17 @@ class ViewSplash extends HTMLElement {
         }
 
         .mystic-title {
-          /* Adjusted Typography - Single Line Guaranteed */
           font-weight: 800;
           letter-spacing: -0.02em;
-          line-height: normal; /* Allow natural height for descenders */
+          line-height: normal;
           margin-bottom: var(--spacing-sm);
           padding: 0 var(--spacing-md);
-          padding-bottom: 0.3em; /* SIGNIFICANT extra space for descenders */
+          padding-bottom: 0.3em;
 
-          /* Gradient & Texture */
           background: linear-gradient(135deg, var(--color-text-main) 30%, var(--color-accent-primary));
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
 
-          /* Glow/Depth */
           filter: drop-shadow(0 0 30px rgba(163, 177, 138, 0.2));
           position: relative;
           z-index: 10;
@@ -75,21 +72,18 @@ class ViewSplash extends HTMLElement {
         }
 
         .mystic-btn {
-          /* Premium Solid Pill */
           position: relative;
           background: var(--color-accent-primary);
-          color: #ffffff; /* Always white text on accent for contrast */
+          color: #ffffff;
           padding: 24px 64px;
           font-size: 1.5rem;
           font-weight: 700;
-          border-radius: 9999px; /* Pill shape */
+          border-radius: 9999px;
           border: none;
 
-          /* Interaction */
           cursor: pointer;
           transition: all 0.4s cubic-bezier(0.19, 1, 0.22, 1);
 
-          /* Depth */
           box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2),
                       0 0 0 1px rgba(255, 255, 255, 0.1) inset;
 
@@ -102,11 +96,10 @@ class ViewSplash extends HTMLElement {
           transform: translateY(-4px) scale(1.02);
           box-shadow: 0 20px 50px rgba(163, 177, 138, 0.4),
                       0 0 0 2px rgba(255,255,255,0.2) inset;
-          background: var(--color-accent-primary); /* Keep background stable */
+          background: var(--color-accent-primary);
           filter: brightness(1.1);
         }
 
-        /* Shine Effect on Hover */
         .mystic-btn::after {
           content: '';
           position: absolute;
@@ -148,14 +141,14 @@ class ViewSplash extends HTMLElement {
           z-index: 5;
           width: 100%;
           max-width: 1200px;
-          min-height: 90vh; /* Ensure full viewport height focus */
+          min-height: 90vh;
           display: flex;
           flex-direction: column;
           justify-content: center;
           align-items: center;
           padding: var(--spacing-xl);
-          padding-top: 10vh; /* Shift content down */
-          padding-bottom: 15vh; /* Space for footer */
+          padding-top: 10vh;
+          padding-bottom: 15vh;
         }
       </style>
 
@@ -179,7 +172,7 @@ class ViewSplash extends HTMLElement {
             text-align: center;
             max-width: 600px;
           ">
-            Um sistema de mobilidade de liderança via linguagem.
+            Leadership mobility, engineered through language.
           </p>
 
           <div style="margin-top: var(--spacing-lg);">
@@ -223,14 +216,14 @@ class ViewSplash extends HTMLElement {
 
     // Create floating language particles
     const host = this.querySelector('#particles-host');
-    const particleCount = 30; // Increased count slightly for more depth
+    const particleCount = 30;
     const alphabets = [
-      "ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ", // Greek
-      "अआइईउऊऋएऐओऔकखगघङचछजझञ", // Hindi
-      "あいうえおかがきぎくぐけげこご", // Japanese
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZ", // Latin
-      "אתבגדהוזחטיכלמנסעפצקרשת", // Hebrew
-      "가나다라마바사아자차카타파하" // Korean (Added for diversity)
+      "ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ",
+      "अआइईउऊऋएऐओऔकखगघङचछजझञ",
+      "あいうえおかがきぎくぐけげこご",
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      "אתבגדהוזחטיכלמנסעפצקרשת",
+      "가나다라마바사아자차카타파하"
     ];
 
     for (let i = 0; i < particleCount; i++) {
@@ -241,13 +234,11 @@ class ViewSplash extends HTMLElement {
       p.style.left = `${Math.random() * 100}%`;
       p.style.animationDelay = `${Math.random() * 15}s`;
       p.style.animationDuration = `${10 + Math.random() * 10}s`;
-      // Randomize font size more
       p.style.fontSize = `${0.8 + Math.random() * 1.5}rem`;
       host.appendChild(p);
     }
 
     this.querySelector('#start-btn').addEventListener('click', () => {
-      // Transition Effect
       this.style.filter = 'blur(10px) brightness(1.2)';
       this.style.opacity = '0';
       this.style.transform = 'scale(1.05)';
