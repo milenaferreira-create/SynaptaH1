@@ -351,21 +351,21 @@ class ViewChat extends HTMLElement {
           };
 
           // ═══ INTERRUPTION MODE CONFIGURATION ═══
-          // Mission 2 (Marcus) — AGGRESSIVE turn-taking for true mid-sentence interruption.
-          //   silence_duration_ms: 250 — Marcus assumes turn after any micro-pause
-          //     (breathing, word search). This creates real mid-sentence interruptions
-          //     but requires the user to speak with high fluency to avoid false triggers.
-          //   prefix_padding_ms: 100 — minimal buffer
-          //   start_of_speech_sensitivity: UNSPECIFIED — default to avoid noise false-positives
-          //   end_of_speech_sensitivity: UNSPECIFIED — default to avoid premature self-truncation
+          // Mission 2 (Marcus) — HYBRID configuration combining:
+          //   - Aggressive timing from old working version (silence_duration_ms: 800)
+          //   - END_SENSITIVITY_LOW so server doesn't prematurely cut Marcus's audio
+          //   - START_SENSITIVITY_UNSPECIFIED (default) to avoid false positives from
+          //     ambient noise being detected as user speech in quiet environments
+          //   - Opening phase protection (8s) handles the rest
           if (isInterruptionMission) {
-            console.log("⚡ [Synapta] Applying AGGRESSIVE interruption mode for Marcus (250ms silence threshold)");
+            console.log("⚡ [Synapta] Applying hybrid interruption mode for Marcus");
+            console.log("⚡ [Synapta] Parameters: silence=800ms, prefix=200ms, end=LOW, start=DEFAULT");
             this.client.automaticActivityDetection = {
               disabled: false,
-              silence_duration_ms: 250,
-              prefix_padding_ms: 100,
-              start_of_speech_sensitivity: "START_SENSITIVITY_UNSPECIFIED",
-              end_of_speech_sensitivity: "END_SENSITIVITY_UNSPECIFIED"
+              silence_duration_ms: 800,
+              prefix_padding_ms: 200,
+              end_of_speech_sensitivity: "END_SENSITIVITY_LOW",
+              start_of_speech_sensitivity: "START_SENSITIVITY_UNSPECIFIED"
             };
           }
 
@@ -463,9 +463,10 @@ class ViewChat extends HTMLElement {
 1. Follow STEP 1 through STEP 5 exactly as defined in the roleplay instructions.
 2. INTERRUPT EXACTLY ONCE — after her first sentence about Q3.
 3. The interruption must contain a clear data misinterpretation.
-4. After yielding to her retake, stay COMPLETELY quiet. Do not interrupt again.
-5. When she completes her clarification, call complete_mission immediately.
-6. When you receive a system text starting with '[SESSION_END', call complete_mission immediately with current observations.
+4. The interruption must happen FAST — cut in within 1 second of her finishing her first sentence.
+5. After yielding to her retake, stay COMPLETELY quiet. Do not interrupt again.
+6. When she completes her clarification, call complete_mission immediately.
+7. When you receive a system text starting with '[SESSION_END', call complete_mission immediately with current observations.
 ` : '';
 
           const systemInstruction = `
