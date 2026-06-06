@@ -86,7 +86,9 @@ class ViewChat extends HTMLElement {
     this._rendered = true;
 
     const mission = this._mission;
-    const userSpeaksFirst = mission.id === 'leap_mission_1';
+    // ═══ ALL MISSIONS NOW HAVE AI SPEAKING FIRST ═══
+    // Sarah (M1), Marcus (M2), David (M3) — all open the conversation
+    const userSpeaksFirst = false;
     const isInterruptionMission = mission.id === 'leap_mission_2';
 
     this.innerHTML = `
@@ -183,7 +185,7 @@ class ViewChat extends HTMLElement {
         <div style="margin-bottom: var(--spacing-xxl); display: flex; flex-direction: column; gap: var(--spacing-lg); align-items: center;">
            <button id="mic-btn" class="chat-cta-btn">
             <span style="font-size: 1.2rem; font-weight: 500; margin-bottom: 2px; letter-spacing: 0.02em;">Start Mission</span>
-            <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">${userSpeaksFirst ? 'You start the conversation' : 'The other person speaks first'}</span>
+            <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">The other person speaks first</span>
           </button>
 
            <p id="connection-status" class="mono" style="
@@ -221,14 +223,12 @@ class ViewChat extends HTMLElement {
         statusEl.style.color = "var(--color-accent-secondary)";
       }
 
-      // Stop user microphone immediately so collisions stop
       try {
         if (this.audioStreamer && typeof this.audioStreamer.stop === 'function') {
           this.audioStreamer.stop();
         }
       } catch(e) { console.warn("Streamer stop on graceful end failed:", e); }
 
-      // Send session-end cue to the model so it calls complete_mission
       try {
         if (this.client && this.client.webSocket && this.client.webSocket.readyState === WebSocket.OPEN) {
           console.log("📤 [Synapta] Sending [SESSION_END] cue to model");
@@ -244,7 +244,6 @@ class ViewChat extends HTMLElement {
         return;
       }
 
-      // Give the model up to 6 seconds to call complete_mission
       this._endTimeout = setTimeout(() => {
         console.warn("⏰ [Synapta] Graceful end timeout — forcing close");
         hardCloseSession({ incomplete: true });
@@ -329,7 +328,7 @@ class ViewChat extends HTMLElement {
 
       if (isSpeaking) {
         console.log("🎙️ [Synapta] Starting session...");
-        console.log("🎭 [Synapta] Mission:", mission.title, "| AI speaks first:", !userSpeaksFirst, "| Interruption mode:", isInterruptionMission);
+        console.log("🎭 [Synapta] Mission:", mission.title, "| Voice:", mission.voice || "Puck (default)", "| Interruption mode:", isInterruptionMission);
         statusEl.textContent = "Connecting...";
         statusEl.style.color = "var(--color-text-sub)";
         kickstartSent = false;
@@ -338,10 +337,20 @@ class ViewChat extends HTMLElement {
 
         try {
           this.client = new GeminiLiveAPI();
-          this.client.setProactivity({ proactiveAudio: userSpeaksFirst });
+
+          // ═══ VOICE CONFIGURATION PER MISSION ═══
+          // Sarah (M1) → Kore (feminine, firm)
+          // Marcus (M2) → Puck (masculine, default)
+          // David (M3) → Charon (masculine, deeper)
+          if (mission.voice && typeof this.client.setVoice === 'function') {
+            console.log(`🗣️ [Synapta] Setting voice to: ${mission.voice}`);
+            this.client.setVoice(mission.voice);
+          }
+
+          // AI always speaks first now
+          this.client.setProactivity({ proactiveAudio: true });
 
           // ═══ CONTEXT WINDOW COMPRESSION ═══
-          // Sliding window: prevents "Session time limit reached" at ~10-15 min mark
           console.log("🪟 [Synapta] Enabling context window compression");
           this.client.contextWindowCompression = {
             slidingWindow: {
@@ -350,13 +359,7 @@ class ViewChat extends HTMLElement {
             triggerTokens: 24000
           };
 
-          // ═══ INTERRUPTION MODE CONFIGURATION ═══
-          // Mission 2 (Marcus) — HYBRID configuration combining:
-          //   - Aggressive timing from old working version (silence_duration_ms: 800)
-          //   - END_SENSITIVITY_LOW so server doesn't prematurely cut Marcus's audio
-          //   - START_SENSITIVITY_UNSPECIFIED (default) to avoid false positives from
-          //     ambient noise being detected as user speech in quiet environments
-          //   - Opening phase protection (8s) handles the rest
+          // ═══ INTERRUPTION MODE CONFIGURATION (Marcus only) ═══
           if (isInterruptionMission) {
             console.log("⚡ [Synapta] Applying hybrid interruption mode for Marcus");
             console.log("⚡ [Synapta] Parameters: silence=800ms, prefix=200ms, end=LOW, start=DEFAULT");
@@ -385,7 +388,7 @@ class ViewChat extends HTMLElement {
                 feedback_pointers: {
                   type: "ARRAY",
                   items: { type: "STRING" },
-                  description: "3 specific feedback points in Portuguese addressing Clarity, Authority, Fluency",
+                  description: "3 specific feedback points in English addressing Clarity, Authority, Fluency",
                 },
               },
               required: ["score", "feedback_pointers"],
@@ -435,9 +438,6 @@ class ViewChat extends HTMLElement {
             if (response.type === MultimodalLiveResponseType.AUDIO) {
               this.audioPlayer.play(response.data);
             } else if (response.type === MultimodalLiveResponseType.INTERRUPTED) {
-              // CRITICAL: flush playback buffer on interrupt signal
-              // EXCEPT during opening phase, where ambient noise / playback
-              // feedback can trigger false-positive INTERRUPTED signals.
               if (this._isOpeningPhase) {
                 console.log("🛡️ [Synapta] INTERRUPTED signal ignored — still in opening phase");
               } else {
@@ -491,14 +491,14 @@ ${mission.mission_completion}
 
 When the mission is complete according to these criteria, call the "complete_mission" tool with:
 - score: 1 (Emergent), 2 (Capable), or 3 (Authoritative)
-- feedback_pointers: 3 specific points in Portuguese addressing Clarity, Authority, Fluency. Quote exact phrases when useful.
+- feedback_pointers: 3 specific points in English addressing Clarity, Authority, Fluency. Quote exact phrases when useful.
 
 ═══ CRITICAL RULES ═══
 - Stay in character as ${mission.ai_persona_name}. Do not break the fourth wall.
 - Do not act as an AI assistant.
 - Speak only in English during the scenario.
 - Be a realistic professional, not a teacher. No grammar lectures.
-- ${userSpeaksFirst ? 'WAIT for the user to speak first.' : 'YOU MUST OPEN THE CONVERSATION FIRST. As soon as the session starts, greet the user in character and prompt them to begin.'}
+- YOU MUST OPEN THE CONVERSATION FIRST. As soon as the session starts, greet the user in character and prompt them to begin.
 - If you receive a system text message starting with "[BEGIN", treat it as a silent stage cue to start speaking. Do not acknowledge or read the cue aloud.
 - If you receive a system text message starting with "[SESSION_END", immediately call the complete_mission tool with your current observations. Do NOT speak before calling the tool.${interruptionEmphasis}
 `;
@@ -542,7 +542,8 @@ When the mission is complete according to these criteria, call the "complete_mis
           startSound.volume = 0.6;
           startSound.play().catch(e => console.error(e));
 
-          if (!userSpeaksFirst && !kickstartSent) {
+          // All missions: AI speaks first, send kickstart with opening protection
+          if (!kickstartSent) {
             kickstartSent = true;
             console.log("🎬 [Synapta] Scheduling AI kickstart in 1500ms...");
             setTimeout(() => {
@@ -550,12 +551,11 @@ When the mission is complete according to these criteria, call the "complete_mis
                 console.log("🎬 [Synapta] Sending kickstart to AI now");
                 this.client.sendTextMessage("[BEGIN]");
 
-                // OPENING PROTECTION: ignore INTERRUPTED signals for the next 8 seconds
                 this._isOpeningPhase = true;
                 console.log("🛡️ [Synapta] Opening phase protection ENABLED (8s)");
                 this._openingPhaseTimeout = setTimeout(() => {
                   this._isOpeningPhase = false;
-                  console.log("🛡️ [Synapta] Opening phase protection DISABLED — normal interruption flow active");
+                  console.log("🛡️ [Synapta] Opening phase protection DISABLED");
                   this._openingPhaseTimeout = null;
                 }, OPENING_PROTECTION_MS);
               } else {
@@ -571,7 +571,7 @@ When the mission is complete according to these criteria, call the "complete_mis
           micBtn.classList.remove('active');
           micBtn.innerHTML = `
               <span style="font-size: 1.2rem; font-weight: 500; margin-bottom: 2px; letter-spacing: 0.02em;">Start Mission</span>
-              <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">${userSpeaksFirst ? 'You start the conversation' : 'The other person speaks first'}</span>
+              <span class="mono" style="font-size: 0.7rem; opacity: 0.9;">The other person speaks first</span>
           `;
 
           if (userViz.disconnect) userViz.disconnect();
