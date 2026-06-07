@@ -59,14 +59,14 @@ class ViewSummary extends HTMLElement {
               ${this._result.score !== "0" && this._result.score !== 0 ? this._renderScore(this._result.score) : '<p style="font-size: 1.2rem; opacity: 0.8;">Practice session complete!</p>'}
             </div>
 
-            ${this._renderBehavioralVariables()}
-
             <div class="card" style="text-align: left;">
               <h4 style="border-bottom: 2px solid var(--color-bg); padding-bottom: var(--spacing-sm);">Feedback</h4>
               <ul style="padding-left: var(--spacing-lg); color: var(--color-text-sub);">
                 ${this._result.notes.map(note => `<li>${note}</li>`).join('')}
               </ul>
             </div>
+
+            ${this._renderBehavioralVariables()}
 
             <div style="flex: 1;"></div>
 
@@ -113,9 +113,8 @@ class ViewSummary extends HTMLElement {
   }
 
   _renderBehavioralVariables() {
-    // The 8 behavioral variables tracked by Synapta.
-    // All marked as longitudinal for now — values accumulate across the 12-week journey.
-    // After WebSummit, Marcus/Sarah/David will populate the first 6 per-mission.
+    // The 8 behavioral variables tracked by Synapta longitudinally.
+    // After the 12-week journey, the dashboard will show accumulated trends.
     const variables = [
       { name: "Latency", description: "Response time under pressure" },
       { name: "Self-corrections", description: "Recovery from speech errors" },
@@ -156,7 +155,7 @@ class ViewSummary extends HTMLElement {
     `).join('');
 
     return `
-      <div class="card" style="text-align: left; margin-bottom: var(--spacing-lg);">
+      <div class="card" style="text-align: left; margin-top: var(--spacing-lg);">
         <h4 style="border-bottom: 2px solid var(--color-bg); padding-bottom: var(--spacing-sm);">Behavioral variables</h4>
         <p style="font-size: 0.8rem; opacity: 0.65; margin-bottom: var(--spacing-md); line-height: 1.5;">
           The 8 dimensions Synapta tracks across your journey. Values accumulate over your 12-week program — your dashboard shows trends across all missions.
@@ -177,9 +176,9 @@ class ViewSummary extends HTMLElement {
 
     const currentLevel = levels.find(l => l.id === score.toString()) || levels[0];
     const descriptions = {
-      '1': 'You needed a lot of help',
-      '2': 'A little help',
-      '3': 'No help, fluid'
+      '1': 'Hesitant under pressure',
+      '2': 'Steady under pressure',
+      '3': 'Authoritative under pressure'
     };
 
     const starIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
@@ -208,7 +207,7 @@ class ViewSummary extends HTMLElement {
       <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: var(--spacing-md); height: 80px;">
         ${scaleHtml}
       </div>
-      <p style="font-size: 1rem; opacity: 0.8; font-style: italic; margin-top: var(--spacing-md);">(${descriptions[score.toString()] || ''})</p>
+      <p style="font-size: 1rem; opacity: 0.8; font-style: italic; margin-top: var(--spacing-md);">${descriptions[score.toString()] || ''}</p>
     `;
   }
 }
