@@ -86,10 +86,8 @@ class ViewChat extends HTMLElement {
     this._rendered = true;
 
     const mission = this._mission;
-    // ═══ ALL MISSIONS NOW HAVE AI SPEAKING FIRST ═══
-    // Sarah (M1), Marcus (M2), David (M3) — all open the conversation
+    // All missions: AI speaks first (Sarah, Marcus, David all open)
     const userSpeaksFirst = false;
-    const isInterruptionMission = mission.id === 'leap_mission_2';
 
     this.innerHTML = `
 
@@ -328,7 +326,7 @@ class ViewChat extends HTMLElement {
 
       if (isSpeaking) {
         console.log("🎙️ [Synapta] Starting session...");
-        console.log("🎭 [Synapta] Mission:", mission.title, "| Voice:", mission.voice || "Puck (default)", "| Interruption mode:", isInterruptionMission);
+        console.log("🎭 [Synapta] Mission:", mission.title, "| Voice:", mission.voice || "Puck (default)");
         statusEl.textContent = "Connecting...";
         statusEl.style.color = "var(--color-text-sub)";
         kickstartSent = false;
@@ -347,10 +345,11 @@ class ViewChat extends HTMLElement {
             this.client.setVoice(mission.voice);
           }
 
-          // AI always speaks first now
+          // AI always speaks first
           this.client.setProactivity({ proactiveAudio: true });
 
           // ═══ CONTEXT WINDOW COMPRESSION ═══
+          // Sliding window prevents "Session time limit reached" on longer conversations
           console.log("🪟 [Synapta] Enabling context window compression");
           this.client.contextWindowCompression = {
             slidingWindow: {
@@ -359,18 +358,11 @@ class ViewChat extends HTMLElement {
             triggerTokens: 24000
           };
 
-          // ═══ INTERRUPTION MODE CONFIGURATION (Marcus only) ═══
-          if (isInterruptionMission) {
-            console.log("⚡ [Synapta] Applying hybrid interruption mode for Marcus");
-            console.log("⚡ [Synapta] Parameters: silence=800ms, prefix=200ms, end=LOW, start=DEFAULT");
-            this.client.automaticActivityDetection = {
-              disabled: false,
-              silence_duration_ms: 800,
-              prefix_padding_ms: 200,
-              end_of_speech_sensitivity: "END_SENSITIVITY_LOW",
-              start_of_speech_sensitivity: "START_SENSITIVITY_UNSPECIFIED"
-            };
-          }
+          // ═══ NOTE: NO PER-MISSION INTERRUPTION CONFIGURATION ═══
+          // All missions now use the default cooperative turn-taking behavior.
+          // Marcus (Mission 2) uses prompt-based misinterpretation instead of
+          // aggressive audio interruption. This is more reliable and consistent
+          // with Sarah and David missions.
 
           this.audioStreamer = new AudioStreamer(this.client);
           this.audioPlayer = new AudioPlayer();
@@ -388,7 +380,7 @@ class ViewChat extends HTMLElement {
                 feedback_pointers: {
                   type: "ARRAY",
                   items: { type: "STRING" },
-                  description: "3 specific feedback points in English addressing Clarity, Authority, Fluency",
+                  description: "Array of EXACTLY 3 strings in this strict order: [0] starts with 'Clarity:', [1] starts with 'Authority:', [2] starts with 'Fluency:'. Each string contains the literal label followed by the observation in English.",
                 },
               },
               required: ["score", "feedback_pointers"],
@@ -457,18 +449,6 @@ class ViewChat extends HTMLElement {
             }
           };
 
-          const interruptionEmphasis = isInterruptionMission ? `
-
-═══ ABSOLUTE RULES FOR THIS SESSION ═══
-1. Follow STEP 1 through STEP 5 exactly as defined in the roleplay instructions.
-2. INTERRUPT EXACTLY ONCE — after her first sentence about Q3.
-3. The interruption must contain a clear data misinterpretation.
-4. The interruption must happen FAST — cut in within 1 second of her finishing her first sentence.
-5. After yielding to her retake, stay COMPLETELY quiet. Do not interrupt again.
-6. When she completes her clarification, call complete_mission immediately.
-7. When you receive a system text starting with '[SESSION_END', call complete_mission immediately with current observations.
-` : '';
-
           const systemInstruction = `
 You are an AI roleplay partner for The Hypatia Journey, a leadership development program for women in STEM. Your task is to play a realistic professional character in an English-language scenario.
 
@@ -491,7 +471,11 @@ ${mission.mission_completion}
 
 When the mission is complete according to these criteria, call the "complete_mission" tool with:
 - score: 1 (Emergent), 2 (Capable), or 3 (Authoritative)
-- feedback_pointers: 3 specific points in English addressing Clarity, Authority, Fluency. Quote exact phrases when useful.
+- feedback_pointers: Array of EXACTLY 3 strings in this strict order:
+  [0] must start with literal text "Clarity:" followed by your observation
+  [1] must start with literal text "Authority:" followed by your observation
+  [2] must start with literal text "Fluency:" followed by your observation
+  All observations in English. Quote her exact phrases when useful.
 
 ═══ CRITICAL RULES ═══
 - Stay in character as ${mission.ai_persona_name}. Do not break the fourth wall.
@@ -500,7 +484,7 @@ When the mission is complete according to these criteria, call the "complete_mis
 - Be a realistic professional, not a teacher. No grammar lectures.
 - YOU MUST OPEN THE CONVERSATION FIRST. As soon as the session starts, greet the user in character and prompt them to begin.
 - If you receive a system text message starting with "[BEGIN", treat it as a silent stage cue to start speaking. Do not acknowledge or read the cue aloud.
-- If you receive a system text message starting with "[SESSION_END", immediately call the complete_mission tool with your current observations. Do NOT speak before calling the tool.${interruptionEmphasis}
+- If you receive a system text message starting with "[SESSION_END", immediately call the complete_mission tool with your current observations. Do NOT speak before calling the tool.
 `;
 
           this.client.setSystemInstructions(systemInstruction);
@@ -508,9 +492,6 @@ When the mission is complete according to these criteria, call the "complete_mis
           this.client.setOutputAudioTranscription(false);
 
           console.log("📝 [Synapta] System prompt loaded for mission:", mission.title);
-          if (isInterruptionMission) {
-            console.log("⚡ [Synapta] Interruption emphasis added to prompt");
-          }
 
           let token = null;
           try {
@@ -535,7 +516,7 @@ When the mission is complete according to these criteria, call the "complete_mis
           }
 
           console.log("✨ [Synapta] Session active");
-          statusEl.textContent = isInterruptionMission ? "Connected · Marcus is listening (will interrupt)" : "Connected · listening";
+          statusEl.textContent = "Connected · listening";
           statusEl.style.color = "var(--color-accent-tertiary)";
 
           const startSound = new Audio("/start-bell.mp3");
